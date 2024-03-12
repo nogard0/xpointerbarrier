@@ -1,20 +1,22 @@
+# xpointerbarrier
+
 This is a fork of xpointerbarrier from Peter Hofmann.
 It adds the functionality to pass through barriers while holding specific key.
 
-Prerequisites
--------------
+## Prerequisites
 
 For Debian/Ubuntu:
+```bash
+$ sudo apt install libx11-dev libxfixes-dev libxrandr-dev libxi-dev
+```
 
-    $ sudo apt install libx11-dev libxfixes-dev libxrandr-dev libxi-dev
+## Compilation and Installation
+```bash
+$ make
+$ sudo make install
+```
 
-Compilation and Installation
-----------------------------
-    $ make
-    $ sudo make install
-
-Running
--------
+## Configuration
 
     Options:
       -v, --verbose        Enable verbose messages (default: Off)
@@ -30,12 +32,13 @@ Running
       -n, --no-comb        The specified keys does not need to be in combination (default: Off)
       -h, --help           Print this help message
 
+## Running
 Example of running with no insets and with CTRL key for barriers pass-through:
 
     $ xpointerbarrier -c
 
-Original README Follows
------------------------
+# Original README Follows
+
 
                     _       _            _                     _
   __  ___ __   ___ (_)_ __ | |_ ___ _ __| |__   __ _ _ __ _ __(_) ___ _ __
