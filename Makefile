@@ -1,7 +1,7 @@
 __NAME__ = xpointerbarrier
 
 CFLAGS += -std=c99 -Wall -Wextra -O2 `pkg-config --cflags x11 xfixes xrandr`
-LDFLAGS += -lm `pkg-config --libs x11 xfixes xrandr`
+LDFLAGS += -lm `pkg-config --libs x11 xfixes xrandr xi`
 
 INSTALL = install
 INSTALL_PROGRAM = $(INSTALL)
