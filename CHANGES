@@ -1,5 +1,9 @@
 Release history for xpointerbarrier
 
+v30.00  2024-03-12
+  [Added]
+  - Release lock while specified key(s) are hold.
+
 v20.07  2020-07-19
   [Fixed]
   - Build no longer depends on GNU sed.
