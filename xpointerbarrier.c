@@ -18,6 +18,10 @@
 #include <X11/extensions/Xrandr.h>
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
+#include <X11/extensions/XI2.h>
+#include <X11/extensions/XInput2.h>
+#include <getopt.h>
 
 struct Insets
 {
@@ -26,6 +30,7 @@ struct Insets
 
 bool do_toggle = false;
 bool verbose = false;
+unsigned char keys = 0;
 
 PointerBarrier
 create_barrier_verbose(Display *dpy, Window w, int x1, int y1,
@@ -106,6 +111,19 @@ create(Display *dpy, Window root, struct Insets *insets, int *num)
         );
     }
 
+    if (keys) {
+        unsigned char m[XIMaskLen(XI_BarrierLeave)] = {0};
+        XIEventMask mask;
+        mask.deviceid = XIAllMasterDevices;
+        mask.mask_len = XIMaskLen(XI_BarrierLeave);
+        mask.mask = m;
+
+        XISetMask(mask.mask, XI_BarrierHit);
+        XISetMask(mask.mask, XI_BarrierLeave);
+        XISelectEvents(dpy, DefaultRootWindow(dpy), &mask, 1);
+        XSync(dpy, False);
+    }
+
     XRRFreeMonitors(moninf);
     XSync(dpy, False);
     return barriers;
@@ -169,6 +187,24 @@ read_katria_insets(Display *dpy, Window root, struct Insets *insets)
     return false;
 }
 
+void 
+print_help(const char *program_name) {
+    printf("Usage: %s [OPTIONS]\n", program_name);
+    printf("Options:\n");
+    printf("  -v, --verbose        Enable verbose messages (default: Off)\n");
+    printf("  -k, --katria         Read Katria insets\n");
+    printf("  -t, --top PIXELS     Specify TOP inset (default: 0)\n");
+    printf("  -b, --bottom PIXELS  Specify BOTTOM inset (default: 0)\n");
+    printf("  -l, --left PIXELS    Specify LEFT inset (default: 0)\n");
+    printf("  -r, --right PIXELS   Specify RIGHT inset (default: 0)\n");
+    printf("  -c, --ctrl           Holding CTRL key disables barriers (default: Off)\n");
+    printf("  -a, --alt            Holding ALT key disables barriers (default: Off)\n");
+    printf("  -s, --shift          Holding SHIFT key disables barriers (default: Off)\n");
+    printf("  -w, --win            Holding WIN key disables barriers (default: Off)\n");
+    printf("  -n, --no-comb        The specified keys does not need to be in combination (default: Off)\n");
+    printf("  -h, --help           Print this help message\n");
+}
+
 int
 main(int argc, char **argv)
 {
@@ -178,13 +214,74 @@ main(int argc, char **argv)
     Window root;
     XEvent ev;
     XConfigureEvent *cev;
-    struct Insets insets;
+    struct Insets insets = {0};
     PointerBarrier *barriers = NULL;
     int barriers_num;
     struct sigaction sa;
     fd_set fds;
     int xfd;
     bool barriers_active = true;
+    int opcode, evt, err;
+    bool read_katria = false;
+    bool no_comb = false;
+    int opt;
+    const char *optstring = "vkt:b:l:r:caswnh";
+
+    struct option longopts[] = {
+        {"verbose", no_argument, NULL, 'v'},
+        {"katria", no_argument, NULL, 'k'},
+        {"top", required_argument, NULL, 't'},
+        {"bottom", required_argument, NULL, 'b'},
+        {"left", required_argument, NULL, 'l'},
+        {"right", required_argument, NULL, 'r'},
+        {"ctrl", no_argument, NULL, 'c'},
+        {"alt", no_argument, NULL, 'a'},
+        {"shift", no_argument, NULL, 's'},
+        {"win", no_argument, NULL, 'w'},
+        {"no-comb", no_argument, NULL, 'n'},
+        {"help", no_argument, NULL, 'h'},
+        {NULL, 0, NULL, 0}};
+
+    while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
+        switch (opt) {
+        case 'v':
+            verbose = true;
+            break;
+        case 'k':
+            read_katria = true;
+            break;
+        case 't':
+            insets.top = atoi(optarg);
+            break;
+        case 'b':
+            insets.bottom = atoi(optarg);
+            break;
+        case 'l':
+            insets.left = atoi(optarg);
+            break;
+        case 'r':
+            insets.right = atoi(optarg);
+            break;
+        case 'c':
+            keys |= ControlMask;
+            break;
+        case 'a':
+            keys |= Mod1Mask;
+            break;
+        case 's':
+            keys |= ShiftMask;
+            break;
+        case 'w':
+            keys |= Mod4Mask;
+            break;
+        case 'n':
+            no_comb = true;
+            break;
+        case 'h':
+            print_help(argv[0]);
+            return 0;
+        }
+    }
 
     dpy = XOpenDisplay(NULL);
     if (dpy == NULL)
@@ -193,32 +290,24 @@ main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+    if (keys && !XQueryExtension(dpy, "XInputExtension", &opcode, &evt, &err)) {
+        printf("Need XInput\n");
+        return 1;
+    }
+
+    if (!keys) {
+        printf("Warning: No KEY was specified! You must use SIGUSR1 for active state toggle!\n");
+    }
+
     screen = DefaultScreen(dpy);
     root = RootWindow(dpy, screen);
 
-    if (argc > 0 && strncmp(argv[argc - 1], "-v", 2) == 0)
-        verbose = true;
-
-    if (argc >= 2 && argc < 5 && strncmp(argv[1], "-k", 2) == 0)
-    {
+    if (read_katria) {
         if (!read_katria_insets(dpy, root, &insets))
         {
             fprintf(stderr, __NAME__": Could not read _KATRIA_INSETS\n");
             exit(EXIT_FAILURE);
         }
-    }
-    else if (argc >= 5)
-    {
-        insets.top = atoi(argv[1]);
-        insets.left = atoi(argv[2]);
-        insets.right = atoi(argv[3]);
-        insets.bottom = atoi(argv[4]);
-    }
-    else
-    {
-        fprintf(stderr, "Usage: "__NAME__
-                        " [-k | <top> <left> <right> <bottom>] [-v]\n");
-        exit(EXIT_FAILURE);
     }
 
     if (insets.top < 0 || insets.left < 0 || insets.right < 0 || insets.bottom < 0)
@@ -290,6 +379,30 @@ main(int argc, char **argv)
                 else
                     barriers = NULL;
             }
+
+            if (keys && ev.type == GenericEvent && ev.xcookie.extension == opcode) {
+                XGetEventData(dpy, &ev.xcookie);
+                XIBarrierEvent *b = ev.xcookie.data;
+                if (b->evtype == XI_BarrierHit) {
+                    XkbStateRec state;
+                    XkbGetState(dpy,XkbUseCoreKbd,&state);
+                    if ((no_comb && (state.base_mods & keys)) || 
+                      (!no_comb && (state.base_mods & keys) == keys)) {
+                        XIBarrierReleasePointer(dpy, b->deviceid, b->barrier, b->eventid);
+                        XFlush(dpy);
+                        if (verbose)
+                            printf("Pointer hit the barrier - Can Pass\n");
+                    } else {
+                        if (verbose)
+                            printf("Pointer hit the barrier - Can NOT Pass\n");  
+                    }
+                } else if (b->evtype == XI_BarrierLeave)
+                    if (verbose)
+                        printf("Pointer left the barrier\n");
+              
+                XFreeEventData(dpy, &ev.xcookie);
+            }
+
         }
 
         if (do_toggle)
